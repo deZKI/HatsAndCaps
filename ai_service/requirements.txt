@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+numpy
+pandas
+tqdm
+torch
+faiss-cpu
+Pillow
+matplotlib
+ultralytics
+transformers
+git+https://github.com/openai/CLIP.git
+openpyxl

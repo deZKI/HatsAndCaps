@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  bot_service:
+    build: ./bot_service
+    environment:
+      - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
+      - ANALYSIS_SERVICE_URL=http://ai_service:5000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      text_analysis_service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  text_analysis_service:
+    build: ai_service
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/docs"]
+      interval: 120s
+      timeout: 5s
+      retries: 1
+
+  database_service:
+    build: ./database_service
+    environment:
+      - POSTGRES_DB=bot_db
+      - POSTGRES_USER=bot_user
+      - POSTGRES_PASSWORD=bot_password
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: bot_db
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: bot_password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bot_db"]
+      interval: 120s
+      timeout: 5s
+      retries: 1
+
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 120s
+      timeout: 5s
+      retries: 1
