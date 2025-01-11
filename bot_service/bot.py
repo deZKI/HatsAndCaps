@@ -4,111 +4,126 @@ import aiohttp
 import asyncio
 import json
 import aio_pika
+import tempfile
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ContentType
 from dotenv import load_dotenv
 
+# Загрузка переменных окружения
 load_dotenv()
 
+# Инициализация логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Переменные окружения
 API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 ANALYSIS_SERVICE_URL = os.getenv("ANALYSIS_SERVICE_URL")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Проверка обязательных переменных окружения
+if not all([API_TOKEN, ANALYSIS_SERVICE_URL, RABBITMQ_URL]):
+    raise ValueError("Необходимо указать TELEGRAM_API_TOKEN, ANALYSIS_SERVICE_URL и RABBITMQ_URL в .env файле")
 
+# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# Функция для отправки данных в RabbitMQ
-async def send_to_rabbitmq(data):
-    connection = await aio_pika.connect_robust(RABBITMQ_URL)
-    async with connection:
-        channel = await connection.channel()
-        queue = await channel.declare_queue("database_queue", durable=True)
-        await channel.default_exchange.publish(
-            aio_pika.Message(body=data.encode()),
-            routing_key=queue.name,
-        )
+async def send_to_rabbitmq(data: str):
+    """
+    Отправка данных в RabbitMQ.
+    """
+    try:
+        connection = await aio_pika.connect_robust(RABBITMQ_URL)
+        async with connection:
+            channel = await connection.channel()
+            queue = await channel.declare_queue("database_queue", durable=True)
+            await channel.default_exchange.publish(
+                aio_pika.Message(body=data.encode()),
+                routing_key=queue.name,
+            )
+        logger.info("Данные успешно отправлены в RabbitMQ")
+    except Exception as e:
+        logger.error(f"Ошибка при отправке в RabbitMQ: {e}")
 
 
-@dp.message(content_types=[ContentType.PHOTO])
+async def analyze_image(file_path: str):
+    """
+    Отправка изображения на анализ сервису и получение результата.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            with open(file_path, "rb") as f:
+                form_data = aiohttp.FormData()
+                form_data.add_field("file", f, filename=os.path.basename(file_path), content_type="image/jpeg")
+                form_data.add_field("top_k", "2")  # Пример параметра для анализа
+
+                async with session.post(f"{ANALYSIS_SERVICE_URL}/search_image", data=form_data) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Ошибка анализа изображения, код: {resp.status}")
+                        return {"status": "error", "message": "Ошибка анализа изображения"}
+                    return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Ошибка соединения с сервисом анализа: {e}")
+        return {"status": "error", "message": "Сервис анализа временно недоступен"}
+
+
+@dp.message(F.content_type == "photo")
 async def handle_image(message: Message):
     """
     Обработка входящих изображений:
-      - Скачиваем фото
-      - Отправляем запрос на сервис image analysis
-      - Сохраняем результат в RabbitMQ
-      - Отправляем ответ пользователю
+    - Скачиваем фото.
+    - Отправляем запрос на сервис image analysis.
+    - Сохраняем результат в RabbitMQ.
+    - Отправляем ответ пользователю.
     """
+    logger.info(f"Получено фото от пользователя {message.from_user.id}")
+
     user_data = {
         "telegram_id": message.from_user.id,
         "username": message.from_user.username,
-        "message": "Фото"
+        "message": "Фото",
     }
 
-    # 1. Скачиваем файл на диск (или в оперативную память)
-    photo = message.photo[-1]  # Берём самое большое по размеру
-    file_path = f"{photo.file_id}.jpg"
-    await photo.download(destination=file_path)
+    # Работа с временным файлом
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
+        file_path = temp_file.name
+        await message.photo[-1].download(destination=file_path)
 
-    # 2. Отправляем запрос на сервис, который обрабатывает изображение (CLIP+YOLO+FAISS)
-    #    Для примера используем параметр top_k=2
-    async with aiohttp.ClientSession() as session:
-        try:
-            # Чтобы отправить файл, используем параметр "files"
-            with open(file_path, "rb") as f:
-                form_data = aiohttp.FormData()
-                form_data.add_field("file", f, filename=file_path, content_type="image/jpeg")
-                form_data.add_field("top_k", "2")  # если нужно несколько похожих
+    # Анализ изображения
+    analysis_result = await analyze_image(file_path)
 
-                async with session.post(
-                        f"{ANALYSIS_SERVICE_URL}/search_image",
-                        data=form_data
-                ) as resp:
-                    if resp.status != 200:
-                        await message.reply("Ошибка при анализе изображения.")
-                        return
-                    analysis_result = await resp.json()
-        except aiohttp.ClientError:
-            await message.reply("Сервис анализа изображений временно недоступен.")
-            return
-        finally:
-            # Удаляем временный файл, чтобы не засорять дисковое пространство
-            if os.path.exists(file_path):
-                os.remove(file_path)
+    # Удаление временного файла
+    os.remove(file_path)
 
-    # 3. Добавляем результат анализа к данным пользователя
+    # Обработка результата анализа
     user_data["analysis_result"] = analysis_result
 
-    # 4. Отправляем данные в RabbitMQ для сохранения
-    await send_to_rabbitmq(json.dumps(user_data))
-
-    # 5. Готовим ответ пользователю
     if analysis_result.get("status") == "ok":
         results = analysis_result.get("results", [])
         if not results:
-            # Пустой список — значит модель ничего не нашла
             await message.reply("Извините, похожие объекты не найдены.")
             return
 
-        # Собираем описание найденных результатов
-        answer_parts = []
-        for r in results:
-            cap_name = r.get("cap_name")
-            score = r.get("similarity_score")
-            answer_parts.append(f" - {cap_name}, схожесть: {score:.2f}")
-        answer_text = "Найдены похожие кепки:\n" + "\n".join(answer_parts)
+        # Формирование ответа
+        answer = "\n".join(
+            [f" - {r.get('cap_name', 'Без имени')}, схожесть: {r.get('similarity_score', 0):.2f}" for r in results]
+        )
+        await message.reply(f"Найдены похожие кепки:\n{answer}")
     else:
-        answer_text = f"Ошибка: {analysis_result}"
+        await message.reply(f"Ошибка: {analysis_result.get('message', 'Неизвестная ошибка')}")
 
-    await message.reply(answer_text)
+    # Отправка данных в RabbitMQ
+    await send_to_rabbitmq(json.dumps(user_data))
 
 
 async def main():
+    """
+    Основная функция запуска бота.
+    """
+    logger.info("Бот запущен и готов к обработке сообщений.")
     await dp.start_polling(bot)
 
 
