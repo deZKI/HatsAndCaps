@@ -1,0 +1,7 @@
+bot_service/venv
+bot_service/.idea
+
+ai_service/venv
+ai_service/.idea
+
+.idea
