@@ -3,8 +3,9 @@ version: '3.8'
 services:
   bot_service:
     build: ./bot_service
+    env_file:
+      - .env
     environment:
-      - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
       - ANALYSIS_SERVICE_URL=http://ai_service:5000
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
@@ -17,6 +18,8 @@ services:
     build: ai_service
     ports:
       - "5000:5000"
+    env_file:
+      - .env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/docs"]
       interval: 120s
@@ -25,11 +28,11 @@ services:
 
   database_service:
     build: ./database_service
+    env_file:
+      - .env
     environment:
-      - POSTGRES_DB=bot_db
-      - POSTGRES_USER=bot_user
-      - POSTGRES_PASSWORD=bot_password
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - POSTGRES_HOST=postgres_db
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,19 +41,12 @@ services:
     ports:
       - "8000:8000"
 
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_DB: bot_db
-      POSTGRES_USER: bot_user
-      POSTGRES_PASSWORD: bot_password
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "bot_db"]
-      interval: 120s
-      timeout: 5s
-      retries: 1
+  postgres_db:
+    image: postgres:16
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   rabbitmq:
     image: "rabbitmq:3-management"

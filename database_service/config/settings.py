@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
+load_dotenv()
 # Пути к проекту
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -36,7 +38,7 @@ MIDDLEWARE = [
 ]
 
 # Маршрутизация
-ROOT_URLCONF = 'web.urls'
+ROOT_URLCONF = 'config.urls'
 
 # Шаблоны Django
 TEMPLATES = [
@@ -56,17 +58,20 @@ TEMPLATES = [
 ]
 
 # WSGI
-WSGI_APPLICATION = 'web.wsgi.application'
-
+WSGI_APPLICATION = 'config.wsgi.application'
 # Настройки базы данных (PostgreSQL)
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB'),
-        'USER': os.getenv('POSTGRES_USER'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-        'HOST': 'postgres',  # Название контейнера с PostgreSQL в docker-compose
-        'PORT': '5432',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql_psycopg2",
+        "NAME": os.getenv('POSTGRES_DB'),
+        "USER": os.getenv('POSTGRES_USER'),
+        "PASSWORD": os.getenv('POSTGRES_PASSWORD'),
+        "HOST": os.getenv('POSTGRES_HOST'),
+        "PORT": os.getenv('POSTGRES_PORT'),
+        "TEST": {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': 'mydatabase'
+        }
     }
 }
 
