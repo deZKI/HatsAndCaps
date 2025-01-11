@@ -8,12 +8,12 @@ services:
       - ANALYSIS_SERVICE_URL=http://ai_service:5000
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
-      text_analysis_service:
+      ai_service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
 
-  text_analysis_service:
+  ai_service:
     build: ai_service
     ports:
       - "5000:5000"
