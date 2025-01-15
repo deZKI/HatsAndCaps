@@ -12,4 +12,4 @@ RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClass
     AutoTokenizer.from_pretrained('cointegrated/rubert-tiny2-cedr-emotion-detection'); \
     AutoModelForSequenceClassification.from_pretrained('cointegrated/rubert-tiny2-cedr-emotion-detection')"
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "app/main:app", "--host", "0.0.0.0", "--port", "5000"]

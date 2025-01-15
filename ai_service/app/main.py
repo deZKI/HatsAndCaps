@@ -1,10 +1,13 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from pathlib import Path
 import shutil
+
 import os
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, UploadFile, File
+
+from .ai import CapsRecognizer
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 # Импортируем CapsRecognizer из вашего модуля
-from ai import CapsRecognizer
 
 app = FastAPI(title="Caps FAISS Search API")
 
