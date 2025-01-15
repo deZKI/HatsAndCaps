@@ -3,6 +3,7 @@ import django
 import asyncio
 import aio_pika
 import json
+import html
 from dotenv import load_dotenv
 from asgiref.sync import sync_to_async
 
@@ -10,7 +11,7 @@ load_dotenv()
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'web.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
 from bot_data.models import User, MessageHistory
@@ -20,10 +21,13 @@ async def save_message_to_db(telegram_id, username, text, analysis_result):
     user, _ = await sync_to_async(User.objects.get_or_create)(
         telegram_id=telegram_id, defaults={"username": username}
     )
+
+    decoded_result = {k: html.unescape(v) if isinstance(v, str) else v
+                      for k, v in analysis_result.items()}
     await MessageHistory.objects.acreate(
         user=user,
         message=text,
-        analysis_result=json.dumps(analysis_result)
+        analysis_result=decoded_result
     )
 
 async def main():

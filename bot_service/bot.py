@@ -57,7 +57,7 @@ async def analyze_image(file_path: str):
         async with aiohttp.ClientSession() as session:
             with open(file_path, "rb") as f:
                 form_data = aiohttp.FormData()
-                form_data.add_field("file", f, filename=os.path.basename(file_path), content_type="image/jpeg")
+                form_data.add_field("image", f, filename=os.path.basename(file_path), content_type="image/jpeg")
                 form_data.add_field("top_k", "2")  # Пример параметра для анализа
 
                 async with session.post(f"{ANALYSIS_SERVICE_URL}/search_image", data=form_data) as resp:
@@ -87,36 +87,46 @@ async def handle_image(message: Message):
         "message": "Фото",
     }
 
-    # Работа с временным файлом
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
-        file_path = temp_file.name
-        await message.photo[-1].download(destination=file_path)
+    # Получаем файл фото через API Telegram
+    try:
+        photo = message.photo[-1]  # Самое большое изображение
+        file_info = await bot.get_file(photo.file_id)
+        file_path = file_info.file_path
 
-    # Анализ изображения
-    analysis_result = await analyze_image(file_path)
+        # Работа с временным файлом
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
+            temp_file_name = temp_file.name
+            await bot.download_file(file_path, temp_file)
 
-    # Удаление временного файла
-    os.remove(file_path)
+        # Анализ изображения
+        analysis_result = await analyze_image(temp_file_name)
 
-    # Обработка результата анализа
-    user_data["analysis_result"] = analysis_result
+        # Удаление временного файла
+        os.remove(temp_file_name)
 
-    if analysis_result.get("status") == "ok":
-        results = analysis_result.get("results", [])
-        if not results:
-            await message.reply("Извините, похожие объекты не найдены.")
-            return
+        # Обработка результата анализа
+        user_data["analysis_result"] = analysis_result
 
-        # Формирование ответа
-        answer = "\n".join(
-            [f" - {r.get('cap_name', 'Без имени')}, схожесть: {r.get('similarity_score', 0):.2f}" for r in results]
-        )
-        await message.reply(f"Найдены похожие кепки:\n{answer}")
-    else:
-        await message.reply(f"Ошибка: {analysis_result.get('message', 'Неизвестная ошибка')}")
+        if analysis_result.get("status") == "ok":
+            results = analysis_result.get("results", [])
+            if not results:
+                await message.reply("Извините, похожие объекты не найдены.")
+                return
 
-    # Отправка данных в RabbitMQ
-    await send_to_rabbitmq(json.dumps(user_data))
+            # Формирование ответа
+            answer = "\n".join(
+                [f" - {r.get('cap_name', 'Без имени')}, схожесть: {r.get('similarity_score', 0):.2f}" for r in results]
+            )
+            await message.reply(f"Найдены похожие кепки:\n{answer}")
+        else:
+            await message.reply(f"Ошибка: {analysis_result.get('message', 'Неизвестная ошибка')}")
+
+        # Отправка данных в RabbitMQ
+        await send_to_rabbitmq(json.dumps(user_data))
+
+    except Exception as e:
+        logger.error(f"Ошибка обработки изображения: {e}")
+        await message.reply("Произошла ошибка при обработке изображения.")
 
 
 @dp.message(F.text == "/start")
