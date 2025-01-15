@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ImageAnalysisService:
     def __init__(self, service_url: str):
         self.service_url = service_url

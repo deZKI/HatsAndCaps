@@ -1,10 +1,14 @@
+import mimetypes
 import shutil
-
+import logging
 import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from starlette.responses import FileResponse
 
 from .ai import CapsRecognizer
+
+logger = logging.getLogger(__name__)
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 # Импортируем CapsRecognizer из вашего модуля
@@ -82,3 +86,40 @@ def search_endpoint(image: UploadFile = File(...), top_k: int = 1):
             return {"status": "ok", "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/images/{image_path:path}")
+def get_image(image_path: str):
+    """
+    Эндпоинт для получения изображения по имени.
+    """
+    # Базовая директория для хранения изображений
+    base_dir = Path("static").resolve()
+
+    # Путь к запрашиваемому файлу
+    file_path = (base_dir / image_path).resolve()
+
+    # Проверка, что путь находится внутри base_dir
+    if not file_path.is_relative_to(base_dir):
+        logger.warning(f"Попытка доступа за пределы директории: {file_path}")
+        raise HTTPException(status_code=400, detail="Недопустимый путь")
+
+    # Проверка существования файла
+    if not file_path.exists():
+        logger.error(f"Запрошенное изображение не найдено: {file_path}")
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+
+    # Определение MIME-типа файла
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if not mime_type:
+        mime_type = "application/octet-stream"
+
+    # Логируем успешный запрос
+    logger.info(f"Отправка файла: {file_path}")
+
+    # Возвращаем файл как ответ
+    return FileResponse(
+        path=file_path,
+        media_type=mime_type,
+        filename=file_path.name
+    )

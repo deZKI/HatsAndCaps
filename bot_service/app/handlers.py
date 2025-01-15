@@ -1,13 +1,31 @@
 import logging
-import os
+from pathlib import Path
+
+import aiofiles
+import aiohttp
 import json
-import tempfile
+
+from PIL import Image
+from io import BytesIO
+
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile
 from aiogram.fsm.storage.memory import MemoryStorage
 from app.utils.temp_file import TempFileManager
 
 logger = logging.getLogger(__name__)
+
+
+def convert_webp_to_jpg(image_bytes):
+    """
+    Конвертирует изображение из формата WEBP в JPG.
+    """
+    image = Image.open(BytesIO(image_bytes))
+    converted_image = BytesIO()
+    image.convert("RGB").save(converted_image, format="JPEG")
+    converted_image.seek(0)
+    return converted_image
+
 
 class TelegramBot:
     def __init__(self, api_token, analysis_service, rabbitmq_handler):
@@ -17,13 +35,16 @@ class TelegramBot:
         self.rabbitmq_handler = rabbitmq_handler
 
         # Регистрация хендлеров
-        self.register_handlers()
+        self._register_handlers()
 
-    def register_handlers(self):
+    def _register_handlers(self):
         self.dp.message.register(self.send_welcome, F.text == "/start")
         self.dp.message.register(self.handle_image, F.content_type == "photo")
 
     async def send_welcome(self, message: Message):
+        """
+        Приветственное сообщение при вводе команды /start.
+        """
         logger.info(f"Пользователь {message.from_user.id} начал работу с ботом.")
         await message.reply(
             "Привет! 👋\n"
@@ -31,6 +52,9 @@ class TelegramBot:
         )
 
     async def handle_image(self, message: Message):
+        """
+        Обработка изображений, отправленных пользователем.
+        """
         logger.info(f"Получено фото от пользователя {message.from_user.id}")
         user_data = {
             "telegram_id": message.from_user.id,
@@ -39,6 +63,7 @@ class TelegramBot:
         }
 
         try:
+            # Скачиваем изображение
             photo = message.photo[-1]
             file_info = await self.bot.get_file(photo.file_id)
             file_path = file_info.file_path
@@ -49,30 +74,101 @@ class TelegramBot:
 
                 # Анализ изображения
                 analysis_result = await self.analysis_service.analyze_image(temp_file)
+                user_data["analysis_result"] = analysis_result
 
-            # Обработка результата анализа
-            user_data["analysis_result"] = analysis_result
-
-            if analysis_result.get("status") == "ok":
-                results = analysis_result.get("results", [])
-                if not results:
-                    await message.reply("Извините, похожие объекты не найдены.")
-                    return
-
-                answer = "\n".join(
-                    [f" - {r.get('cap_name', 'Без имени')}, схожесть: {r.get('similarity_score', 0):.2f}" for r in results]
-                )
-                await message.reply(f"Найдены похожие объекты:\n{answer}")
-            else:
-                await message.reply(f"Ошибка: {analysis_result.get('message', 'Неизвестная ошибка')}")
+                # Отправка результатов пользователю
+                await self.process_analysis_result(message, analysis_result)
 
             # Отправка данных в RabbitMQ
             await self.rabbitmq_handler.send_to_queue(json.dumps(user_data))
 
         except Exception as e:
             logger.error(f"Ошибка обработки изображения: {e}")
-            await message.reply("Произошла ошибка при обработке изображения.")
+            await message.reply("Произошла ошибка при обработке изображения. 😞")
+
+    async def process_analysis_result(self, message: Message, analysis_result: dict):
+        """
+        Обрабатывает результат анализа и отправляет данные пользователю.
+        """
+        if analysis_result.get("status") != "ok":
+            await message.reply(f"Ошибка анализа: {analysis_result.get('message', 'Неизвестная ошибка')}")
+            return
+
+        results = analysis_result.get("results", [])
+        if not results:
+            await message.reply("Извините, похожие объекты не найдены.")
+            return
+
+        for res in results:
+            await self.send_result(message, res)
+
+        await message.reply("Вот похожие объекты, которые я нашел для вас! 😊")
+
+    from PIL import Image
+    from io import BytesIO
+    from aiogram.types import FSInputFile
+
+    async def send_result(self, message: Message, result: dict):
+        """
+        Скачивает изображение из другого сервиса, сохраняет его локально, а затем отправляет пользователю.
+        """
+        cap_name = result.get("cap_name", "Без имени")
+        similarity_score = result.get("similarity_score", 0.0)
+        image_path = result.get("image_path")
+
+        if not image_path:
+            logger.warning(f"У объекта {cap_name} отсутствует путь к изображению.")
+            return
+
+        # Формируем полный URL для загрузки изображения
+        image_url = f"{self.analysis_service.service_url}/images/{image_path.lstrip('/')}"
+        image_url = image_url.replace("\\", "/")  # Исправляем обратные слэши
+
+        # Путь для временного сохранения загруженного изображения
+        temp_dir = Path("temp_images")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        local_image_path = temp_dir / Path(image_path).name
+
+        try:
+            # Скачиваем изображение
+            async with aiohttp.ClientSession() as session:
+                async with session.get(image_url) as response:
+                    if response.status == 200:
+                        async with aiofiles.open(local_image_path, "wb") as f:
+                            await f.write(await response.read())
+                    else:
+                        logger.warning(f"Не удалось загрузить изображение: {image_url}, статус: {response.status}")
+                        return
+
+            # Конвертируем изображение, если оно в формате WEBP
+            if local_image_path.suffix.lower() == ".webp":
+                converted_path = temp_dir / f"{local_image_path.stem}.jpg"
+                with Image.open(local_image_path) as img:
+                    img.convert("RGB").save(converted_path, "JPEG")
+                local_image_path = converted_path
+
+            # Отправляем изображение пользователю
+            photo_file = FSInputFile(local_image_path)
+            await self.bot.send_photo(
+                chat_id=message.chat.id,
+                photo=photo_file,
+                caption=f"Название: {cap_name}\nСхожесть: {similarity_score:.2f}"
+            )
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке изображения {image_url}: {e}")
+            await message.reply(f"Не удалось обработать изображение: {cap_name}")
+        finally:
+            # Удаляем временные файлы
+            try:
+                if local_image_path.exists():
+                    local_image_path.unlink()
+            except Exception as cleanup_error:
+                logger.warning(f"Не удалось удалить временный файл {local_image_path}: {cleanup_error}")
 
     async def run(self):
+        """
+        Запуск бота.
+        """
         logger.info("Бот запущен и готов к обработке сообщений.")
         await self.dp.start_polling(self.bot)
