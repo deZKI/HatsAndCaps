@@ -1,11 +1,12 @@
-import os
-import django
 import asyncio
-import aio_pika
-import json
 import html
-from dotenv import load_dotenv
+import json
+import os
+
+import aio_pika
+import django
 from asgiref.sync import sync_to_async
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -14,7 +15,8 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from bot_data.models import User, MessageHistory
+from .bot_data.models import MessageHistory, User
+
 
 async def save_message_to_db(telegram_id, username, text, analysis_result):
     # Используем sync_to_async для работы с базой данных
@@ -29,6 +31,7 @@ async def save_message_to_db(telegram_id, username, text, analysis_result):
         message=text,
         analysis_result=decoded_result
     )
+
 
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
@@ -49,6 +52,7 @@ async def main():
 
                     # Сохраняем данные в базе данных через асинхронный вызов
                     await save_message_to_db(telegram_id, username, text, analysis_result)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

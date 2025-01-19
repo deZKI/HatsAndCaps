@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import User, MessageHistory
+from .models import MessageHistory, User
 
 
 @admin.register(User)

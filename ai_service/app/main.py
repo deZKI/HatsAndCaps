@@ -1,9 +1,10 @@
-import mimetypes
-import shutil
 import logging
+import mimetypes
 import os
+import shutil
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, UploadFile, File
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from starlette.responses import FileResponse
 
 from .ai import CapsRecognizer

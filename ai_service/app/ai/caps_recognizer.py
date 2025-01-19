@@ -1,15 +1,16 @@
 import os
+import pickle
 import shutil
 import zipfile
-import pickle
+
+import clip
+import faiss
 import numpy as np
 import pandas as pd
 import torch
-import faiss
 from PIL import Image
 from tqdm import tqdm
 from ultralytics import YOLO
-import clip
 
 
 class CapsRecognizer:

@@ -15,3 +15,5 @@ git+https://github.com/openai/CLIP.git
 openpyxl
 
 torchvision~=0.20.1
+isort==5.13.2
+flake8==7

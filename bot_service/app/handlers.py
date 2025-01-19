@@ -1,30 +1,17 @@
+import json
 import logging
 from pathlib import Path
 
 import aiofiles
 import aiohttp
-import json
-
-from PIL import Image
-from io import BytesIO
-
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, FSInputFile
 from aiogram.fsm.storage.memory import MemoryStorage
-from app.utils.temp_file import TempFileManager
+from aiogram.types import FSInputFile, Message
+from PIL import Image
+
+from app.utils import TempFileManager
 
 logger = logging.getLogger(__name__)
-
-
-def convert_webp_to_jpg(image_bytes):
-    """
-    Конвертирует изображение из формата WEBP в JPG.
-    """
-    image = Image.open(BytesIO(image_bytes))
-    converted_image = BytesIO()
-    image.convert("RGB").save(converted_image, format="JPEG")
-    converted_image.seek(0)
-    return converted_image
 
 
 class TelegramBot:
@@ -104,9 +91,10 @@ class TelegramBot:
 
         await message.reply("Вот похожие объекты, которые я нашел для вас! 😊")
 
-    from PIL import Image
     from io import BytesIO
+
     from aiogram.types import FSInputFile
+    from PIL import Image
 
     async def send_result(self, message: Message, result: dict):
         """

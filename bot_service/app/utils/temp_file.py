@@ -1,5 +1,6 @@
-import tempfile
 import os
+import tempfile
+
 
 class TempFileManager:
     def __init__(self, suffix=""):

@@ -1,7 +1,9 @@
-import aio_pika
 import logging
 
+import aio_pika
+
 logger = logging.getLogger(__name__)
+
 
 class RabbitMQHandler:
     def __init__(self, rabbitmq_url: str, queue_name: str):
