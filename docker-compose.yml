@@ -58,3 +58,5 @@ services:
       interval: 120s
       timeout: 5s
       retries: 1
+volumes:
+  postgres_data:
