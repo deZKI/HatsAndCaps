@@ -15,7 +15,7 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from .bot_data.models import MessageHistory, User
+from bot_data.models import MessageHistory, User
 
 
 async def save_message_to_db(telegram_id, username, text, analysis_result):

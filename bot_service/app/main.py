@@ -3,9 +3,9 @@ import os
 
 from dotenv import load_dotenv
 
-from app.handlers import TelegramBot
-from app.services.analysis import ImageAnalysisService
-from app.services.rabbitmq import RabbitMQHandler
+from .handlers import TelegramBot
+from .services.analysis import ImageAnalysisService
+from .services.rabbitmq import RabbitMQHandler
 
 load_dotenv()
 
