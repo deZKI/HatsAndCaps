@@ -9,7 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import FSInputFile, Message
 from PIL import Image
 
-from app.utils import TempFileManager
+from .utils import TempFileManager
 
 logger = logging.getLogger(__name__)
 
