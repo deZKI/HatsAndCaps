@@ -34,7 +34,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - POSTGRES_HOST=postgres_db
     depends_on:
-      postgres:
+      postgres_db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
