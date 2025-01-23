@@ -7,4 +7,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "bot_service/main.py"]
+CMD ["python", "app/main.py"]
