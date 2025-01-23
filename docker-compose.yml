@@ -10,9 +10,9 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       ai_service:
-        condition: service_healthy
+        condition: service_started
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
 
   ai_service:
     build: ai_service
@@ -35,9 +35,9 @@ services:
       - POSTGRES_HOST=postgres_db
     depends_on:
       postgres_db:
-        condition: service_healthy
+        condition: service_started
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "8000:8000"
 
